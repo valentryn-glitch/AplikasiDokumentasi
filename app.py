@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import pytz
 from streamlit_javascript import st_javascript
 import time
+import shutil
 
 # Konfigurasi Halaman - Wajib di baris pertama setelah import
 st.set_page_config(page_title="Sistem Dokumentasi Privat v15", layout="wide")
@@ -149,7 +150,7 @@ KAMUS = {
         "filter_kat": "### 🔍 카테고리 필터", "pilih_jenis": "문서 유형 선택:", "semua": "전체",
         "catatan_saja": "노트만", "foto": "사진", "video": "동영상", "pilih_f_internal": "📁 카테고리 내부 폴더 선택",
         "semua_folder": "모든 폴더", "kosong": "현재 활성화된 노트가 없습니다.", "sisa_waktu": "⏳ **남은 표시 시간:**",
-        "hari": "일", "jam": "시간", "menit": "분", "detik": "초", "permanen": "📌 영구 게시물", "hanya_teks": "📌 텍스트 노트 전용 (파일 없음)",
+        "hari": "일", "jam": "時間", "menit": "분", "detik": "초", "permanen": "📌 영구 게시물", "hanya_teks": "📌 텍스트 노트 전용 (파일 없음)",
         "salin_share": "##### 🔗 공유할 노트 복사:", "tanggal": "날짜", "detail": "상세 설명",
         "menu_1": "🎬 활성 갤러리 및 노트", "menu_2": "➕ 노트 입력 및 삭제", "menu_3": "📁 폴더 관리",
         "menu_4": "📊 대시보드 및 데이터베이스 모니터링", "menu_5": "👥 사용자 및 비밀번호 관리", "menu_6": "🎨 GUI 글로벌 테마 (관리자)", "pilih_hal": "페이지 선택:"
@@ -202,7 +203,7 @@ KAMUS = {
         "sukses_daftar": "Matagumpay ang pagpaparehistro! Mangyaring mag-log in.", "wajib_isi": "Lahat ng patlang ay kinakailangan!",
         "bantuan_pulih": "Tulong sa Instant na Pagbawi ng Account", "info_pulih": "Ilagay ang iyong nakarehistrong Gmail. Hahanapin ng system ang iyong account, awtomatikong ire-redirect ka sa login page, at i-autofill ang iyong mga kredensyal!",
         "btn_pulih": "Bawiin ang Account & Pumunta sa Log In", "err_email_salah": "Di-wastong Gmail! Ang email na ito ay hindi nakarehistro.",
-        "pilih_email_dulu": "Mangyaring ilagay muna ang iyong email!", "galeri_title": "🎬 Aktibong Gallery at mga Tala",
+        "pilih_email_dulu": "Mangyaring ilay muna ang iyong email!", "galeri_title": "🎬 Aktibong Gallery at mga Tala",
         "filter_kat": "### 🔍 Filter ng Kategorya", "pilih_jenis": "Pumili ng Uri ng Dokumentasyon:", "semua": "Lahat",
         "catatan_saja": "Mga Tala lamang", "foto": "Mga Larawan", "video": "Mga Video", "pilih_f_internal": "📁 Pumili ng Folder sa loob ng Kategorya",
         "semua_folder": "Lahat ng Folder", "kosong": "Walang aktibong mga tala sa kasalukuyan.", "sisa_waktu": "⏳ **Natitirang Oras ng Display:**",
@@ -481,13 +482,11 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
     with tab_input:
         kat_terpilih = st.selectbox("1. Pilih Jenis Kategori Terlebih Dahulu:", ["Catatan saja", "Foto", "Video"])
         
-        # Menggunakan struktur form bawaan tanpa modifikasi state eksternal yang rumit
         with st.form("form_upload_catatan", clear_on_submit=False):
             name = st.text_input("Nama Kegiatan/Catatan:")
             folder_tujuan = st.selectbox("Folder:", ambil_daftar_folder(kat_terpilih)) if kat_terpilih in ["Foto", "Video"] else "Tidak Butuh Folder"
             detail = st.text_area("Detail Keterangan:")
             
-            # FITUR BARU: Menambahkan accept_multiple_files=True agar bisa pilih banyak media sekaligus
             uploaded_files = st.file_uploader("Upload Media (Bisa pilih banyak file sekaligus):", type=["png", "jpg", "jpeg", "mp4"], accept_multiple_files=True)
             
             st.markdown("### ⏱️ Atur Durasi Masa Tampil Konten")
@@ -511,12 +510,10 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
                     if total_menit_simpan <= 0:
                         total_menit_simpan = 1
                 
-                # EFISIENSI & SINCRONISASI LOADING: Seluruh baris pemrosesan dibungkus st.spinner
                 with st.spinner("⏳ Sedang memproses dan mengunggah semua file berkas Anda ke database v6..."):
                     df_k = baca_kegiatan()
                     waktu_skrg_wib = datetime.now(WIB)
                     
-                    # Logika jika tidak ada file (Hanya Catatan Teks)
                     if not uploaded_files:
                         new_rec = {
                             "ID": str(int(waktu_skrg_wib.timestamp())), 
@@ -532,19 +529,15 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
                         }
                         df_k = pd.concat([df_k, pd.DataFrame([new_rec])], ignore_index=True)
                     
-                    # Logika looping jika mengupload banyak file sekaligus
                     else:
                         for i, file_satuan in enumerate(uploaded_files):
-                            # Beri nama unik tiap file agar tidak saling menimpa jika nama filenya sama
                             timestamp_unik = int(waktu_skrg_wib.timestamp()) + i
                             nama_file_fisik = f"{timestamp_unik}_{file_satuan.name}"
                             file_path = os.path.join(FOLDER_UTAMA_MEDIA, kat_terpilih, folder_tujuan, nama_file_fisik)
                             
-                            # Simpan file ke storage baru
                             with open(file_path, "wb") as f: 
                                 f.write(file_satuan.getbuffer())
                             
-                            # Beri penamaan judul berbeda tipis untuk tiap file di visual tabel database
                             nama_kegiatan_final = f"{name} ({i+1})" if len(uploaded_files) > 1 else name
                             
                             new_rec = {
@@ -561,14 +554,10 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
                             }
                             df_k = pd.concat([df_k, pd.DataFrame([new_rec])], ignore_index=True)
                     
-                    # Simpan akumulasi data ke file CSV baru
                     simpan_kegiatan(df_k)
                     catat_log(st.session_state.username, "Upload Kegiatan", f"Mengupload catatan baru multipel: '{name}'")
-                    
-                    # Efek jeda opsional sepersekian detik agar pengguna merasakan loading selesai penuh
                     time.sleep(1)
                 
-                # SISTEM PEMBERSIHAN FORMULIR TOTAL: Pemicu refresh paksa agar halaman bersih kembali semula
                 st.success("✅ Seluruh berkas sukses dipublikasikan!")
                 st.toast("🚀 Form dibersihkan otomatis!", icon="🧼")
                 st.rerun()
@@ -594,7 +583,7 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
                     st.error("❌ Penghapusan Gagal! Catatan tidak valid.")
                     st.toast("❌ Gagal menghapus catatan!", icon="❌")
 
-# --- HALAMAN 3: MANAJEMEN FOLDER KATEGORI ---
+# --- HALAMAN 3: MANAJEMEN FOLDER KATEGORI (KINI DILENGKAPI FITUR HAPUS) ---
 elif menu == txt["menu_3"] and st.session_state.role == "Admin":
     st.title("📁 Manajemen Folder Kategori")
     
@@ -602,19 +591,55 @@ elif menu == txt["menu_3"] and st.session_state.role == "Admin":
         st.toast("Struktur direktori diperbarui!", icon="🔄")
         st.rerun()
         
-    nama_f = st.text_input("Nama Folder Baru:")
-    kat_f = st.selectbox("Kategori:", ["Foto", "Video"])
-    if st.button("Buat Folder"):
-        if nama_f:
-            os.makedirs(os.path.join(PATH_FOTO if kat_f == "Foto" else PATH_VIDEO, nama_f), exist_ok=True)
-            catat_log(st.session_state.username, "Buat Folder", f"Membuat folder '{nama_f}' di kategori {kat_f}")
+    tab_buat_f, tab_hapus_f = st.tabs(["➕ Buat Folder Baru", "🗑️ Hapus Folder"])
+    
+    with tab_buat_f:
+        st.markdown("### Buat Folder Kategori Baru")
+        nama_f = st.text_input("Nama Folder Baru:")
+        kat_f = st.selectbox("Pilih Jenis Kategori Folder:", ["Foto", "Video"], key="kat_buat")
+        if st.button("Buat Folder Now"):
+            if nama_f:
+                os.makedirs(os.path.join(PATH_FOTO if kat_f == "Foto" else PATH_VIDEO, nama_f), exist_ok=True)
+                catat_log(st.session_state.username, "Buat Folder", f"Membuat folder '{nama_f}' di kategori {kat_f}")
+                
+                st.success(f"📁 Folder '{nama_f}' berhasil dibuat di kategori {kat_f}!")
+                st.toast("📁 Folder baru sukses dibuat!", icon="📁")
+                st.rerun()
+            else:
+                st.warning("⚠️ Pembuatan Gagal! Nama folder tidak boleh kosong.")
+                st.toast("⚠️ Nama folder kosong!", icon="🛑")
+                
+    with tab_hapus_f:
+        st.markdown("### Hapus Folder Kategori")
+        st.warning("🚨 PERINGATAN: Menghapus folder akan menghapus **SELURUH FILE MEDIA** yang ada di dalam folder tersebut secara permanen!")
+        
+        kat_hapus = st.selectbox("Pilih Jenis Kategori Folder:", ["Foto", "Video"], key="kat_hapus")
+        list_folder_tersedia = ambil_daftar_folder(kat_hapus)
+        
+        # Mencegah penghapusan folder bawaan utama 'Umum' demi stabilitas sistem
+        if "Umum" in list_folder_tersedia:
+            list_folder_tersedia.remove("Umum")
             
-            st.success(f"📁 Folder '{nama_f}' berhasil dibuat di kategori {kat_f}!")
-            st.toast("📁 Folder baru sukses dibuat!", icon="📁")
-            st.rerun()
+        if not list_folder_tersedia:
+            st.info(f"Tidak ada folder kustom yang bisa dihapus pada kategori {kat_hapus}.")
         else:
-            st.warning("⚠️ Pembuatan Gagal! Nama folder tidak boleh kosong.")
-            st.toast("⚠️ Nama folder kosong!", icon="🛑")
+            folder_target_hapus = st.selectbox("Pilih Folder yang Akan Dihapus Permanen:", list_folder_tersedia)
+            
+            if st.button("Hapus Folder Secara Permanen", type="primary"):
+                path_target_direktori = os.path.join(PATH_FOTO if kat_hapus == "Foto" else PATH_VIDEO, folder_target_hapus)
+                
+                with st.spinner(f"⏳ Sedang menghapus folder '{folder_target_hapus}' beserta seluruh isi berkas di dalamnya..."):
+                    try:
+                        # Menghapus folder beserta seluruh isi file didalamnya secara rekursif
+                        shutil.rmtree(path_target_direktori)
+                        catat_log(st.session_state.username, "Hapus Folder", f"Menghapus folder kustom '{folder_target_hapus}' pada kategori {kat_hapus}")
+                        time.sleep(1)
+                        
+                        st.success(f"🗑️ Folder '{folder_target_hapus}' sukses dimusnahkan dari server!")
+                        st.toast("🗑️ Folder terhapus!", icon="🗑️")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Gagal menghapus folder! Error: {str(e)}")
 
 # --- HALAMAN 4: MONITORING DATABASE & LOG LIVE ---
 elif menu == txt["menu_4"] and st.session_state.role == "Admin":
