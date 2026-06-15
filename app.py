@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import pytz
 from streamlit_javascript import st_javascript
+import time
 
 # Konfigurasi Halaman - Wajib di baris pertama setelah import
 st.set_page_config(page_title="Sistem Dokumentasi Privat v15", layout="wide")
@@ -170,7 +171,7 @@ KAMUS = {
         "hari": "日", "jam": "時間", "menit": "分", "detik": "秒", "permanen": "📌 常時表示", "hanya_teks": "📌 テキストノートのみ（ファイルなし）",
         "salin_share": "##### 🔗 共有用ノートをコピー:", "tanggal": "日付", "detail": "詳細説明",
         "menu_1": "🎬 アクティブギャラリー＆ノート", "menu_2": "➕ ノートの追加・削除", "menu_3": "📁 フォルダ管理",
-        "menu_4": "📊 ダッシュボード＆データベース監視", "menu_5": "👥 ユーザー＆パスワード管理", "menu_6": "🎨 GUI グローバルテーマ (管理者)", "pilih_hal": "ページ選択:"
+        "menu_4": "📊 Dashboard＆データベース監視", "menu_5": "👥 ユーザー＆パスワード管理", "menu_6": "🎨 GUI グローバルテーマ (管理者)", "pilih_hal": "ページ選択:"
     },
     "Thailand (ไทย)": {
         "navigasi": "🧭 แถบนำทาง", "belum_login": "สถานะ: ยังไม่ได้ล็อกอิน", "logout": "ออกจากระบบ",
@@ -201,7 +202,7 @@ KAMUS = {
         "sukses_daftar": "Matagumpay ang pagpaparehistro! Mangyaring mag-log in.", "wajib_isi": "Lahat ng patlang ay kinakailangan!",
         "bantuan_pulih": "Tulong sa Instant na Pagbawi ng Account", "info_pulih": "Ilagay ang iyong nakarehistrong Gmail. Hahanapin ng system ang iyong account, awtomatikong ire-redirect ka sa login page, at i-autofill ang iyong mga kredensyal!",
         "btn_pulih": "Bawiin ang Account & Pumunta sa Log In", "err_email_salah": "Di-wastong Gmail! Ang email na ito ay hindi nakarehistro.",
-        "pilih_email_dulu": "Mangyaring ilay muna ang iyong email!", "galeri_title": "🎬 Aktibong Gallery at mga Tala",
+        "pilih_email_dulu": "Mangyaring ilagay muna ang iyong email!", "galeri_title": "🎬 Aktibong Gallery at mga Tala",
         "filter_kat": "### 🔍 Filter ng Kategorya", "pilih_jenis": "Pumili ng Uri ng Dokumentasyon:", "semua": "Lahat",
         "catatan_saja": "Mga Tala lamang", "foto": "Mga Larawan", "video": "Mga Video", "pilih_f_internal": "📁 Pumili ng Folder sa loob ng Kategorya",
         "semua_folder": "Lahat ng Folder", "kosong": "Walang aktibong mga tala sa kasalukuyan.", "sisa_waktu": "⏳ **Natitirang Oras ng Display:**",
@@ -479,11 +480,15 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
     tab_input, tab_hapus = st.tabs(["➕ Tambah Catatan Baru", "🗑️ Hapus Catatan"])
     with tab_input:
         kat_terpilih = st.selectbox("1. Pilih Jenis Kategori Terlebih Dahulu:", ["Catatan saja", "Foto", "Video"])
-        with st.form("form_upload_catatan"):
+        
+        # Menggunakan struktur form bawaan tanpa modifikasi state eksternal yang rumit
+        with st.form("form_upload_catatan", clear_on_submit=False):
             name = st.text_input("Nama Kegiatan/Catatan:")
             folder_tujuan = st.selectbox("Folder:", ambil_daftar_folder(kat_terpilih)) if kat_terpilih in ["Foto", "Video"] else "Tidak Butuh Folder"
             detail = st.text_area("Detail Keterangan:")
-            uploaded_file = st.file_uploader("Upload Media:", type=["png", "jpg", "jpeg", "mp4"])
+            
+            # FITUR BARU: Menambahkan accept_multiple_files=True agar bisa pilih banyak media sekaligus
+            uploaded_files = st.file_uploader("Upload Media (Bisa pilih banyak file sekaligus):", type=["png", "jpg", "jpeg", "mp4"], accept_multiple_files=True)
             
             st.markdown("### ⏱️ Atur Durasi Masa Tampil Konten")
             set_permanen = st.checkbox("Jadikan Postingan Ini Permanen (Selalu Tampil)", value=False)
@@ -495,40 +500,81 @@ elif menu == txt["menu_2"] and st.session_state.role == "Admin":
             with c_min: durasi_menit = st.number_input("Menit:", min_value=0, max_value=59, value=0, disabled=disabled_inputs)
             with c_sec: durasi_detik = st.number_input("Detik:", min_value=0, max_value=59, value=0, disabled=disabled_inputs)
             
-            if st.form_submit_button("Publikasikan"):
-                if name:
-                    if set_permanen:
-                        total_menit_simpan = 99999999
-                    else:
-                        total_menit_simpan = (durasi_hari * 1440) + (durasi_jam * 60) + durasi_menit + (durasi_detik / 60.0)
-                        if total_menit_simpan <= 0:
-                            total_menit_simpan = 1
-                            
-                    file_path = ""
-                    if uploaded_file is not None:
-                        file_path = os.path.join(FOLDER_UTAMA_MEDIA, kat_terpilih, folder_tujuan, uploaded_file.name)
-                        with open(file_path, "wb") as f: f.write(uploaded_file.getbuffer())
-                        
-                    new_rec = {
-                        "ID": str(int(datetime.now(WIB).timestamp())), 
-                        "Tanggal": datetime.now(WIB).strftime("%Y-%m-%d"), 
-                        "Nama Kegiatan": name, 
-                        "Kategori": kat_terpilih, 
-                        "Folder": folder_tujuan, 
-                        "Detail": detail, 
-                        "File Dokumentasi": file_path, 
-                        "Waktu_Upload": datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S"), 
-                        "Masa_Berlaku_Menit": total_menit_simpan, 
-                        "Oleh_Admin": st.session_state.username
-                    }
-                    df_k = baca_kegiatan(); df_k = pd.concat([df_k, pd.DataFrame([new_rec])], ignore_index=True); simpan_kegiatan(df_k)
-                    catat_log(st.session_state.username, "Upload Kegiatan", f"Mengupload catatan baru: '{name}'")
-                    
-                    st.success(f"✅ Publikasi Telah Berhasil! Catatan '{name}' aktif sekarang.")
-                    st.toast("🚀 Catatan berhasil dipublikasikan!", icon="🚀")
+            submit_button = st.form_submit_button("Publikasikan")
+            
+        if submit_button:
+            if name:
+                if set_permanen:
+                    total_menit_simpan = 99999999
                 else:
-                    st.error("❌ Publikasi Gagal! Nama kegiatan wajib diisi.")
-                    st.toast("❌ Gagal publikasi konten!", icon="🛑")
+                    total_menit_simpan = (durasi_hari * 1440) + (durasi_jam * 60) + durasi_menit + (durasi_detik / 60.0)
+                    if total_menit_simpan <= 0:
+                        total_menit_simpan = 1
+                
+                # EFISIENSI & SINCRONISASI LOADING: Seluruh baris pemrosesan dibungkus st.spinner
+                with st.spinner("⏳ Sedang memproses dan mengunggah semua file berkas Anda ke database v6..."):
+                    df_k = baca_kegiatan()
+                    waktu_skrg_wib = datetime.now(WIB)
+                    
+                    # Logika jika tidak ada file (Hanya Catatan Teks)
+                    if not uploaded_files:
+                        new_rec = {
+                            "ID": str(int(waktu_skrg_wib.timestamp())), 
+                            "Tanggal": waktu_skrg_wib.strftime("%Y-%m-%d"), 
+                            "Nama Kegiatan": name, 
+                            "Kategori": kat_terpilih, 
+                            "Folder": folder_tujuan, 
+                            "Detail": detail, 
+                            "File Dokumentasi": "", 
+                            "Waktu_Upload": waktu_skrg_wib.strftime("%Y-%m-%d %H:%M:%S"), 
+                            "Masa_Berlaku_Menit": total_menit_simpan, 
+                            "Oleh_Admin": st.session_state.username
+                        }
+                        df_k = pd.concat([df_k, pd.DataFrame([new_rec])], ignore_index=True)
+                    
+                    # Logika looping jika mengupload banyak file sekaligus
+                    else:
+                        for i, file_satuan in enumerate(uploaded_files):
+                            # Beri nama unik tiap file agar tidak saling menimpa jika nama filenya sama
+                            timestamp_unik = int(waktu_skrg_wib.timestamp()) + i
+                            nama_file_fisik = f"{timestamp_unik}_{file_satuan.name}"
+                            file_path = os.path.join(FOLDER_UTAMA_MEDIA, kat_terpilih, folder_tujuan, nama_file_fisik)
+                            
+                            # Simpan file ke storage baru
+                            with open(file_path, "wb") as f: 
+                                f.write(file_satuan.getbuffer())
+                            
+                            # Beri penamaan judul berbeda tipis untuk tiap file di visual tabel database
+                            nama_kegiatan_final = f"{name} ({i+1})" if len(uploaded_files) > 1 else name
+                            
+                            new_rec = {
+                                "ID": str(timestamp_unik), 
+                                "Tanggal": waktu_skrg_wib.strftime("%Y-%m-%d"), 
+                                "Nama Kegiatan": nama_kegiatan_final, 
+                                "Kategori": kat_terpilih, 
+                                "Folder": folder_tujuan, 
+                                "Detail": detail, 
+                                "File Dokumentasi": file_path, 
+                                "Waktu_Upload": waktu_skrg_wib.strftime("%Y-%m-%d %H:%M:%S"), 
+                                "Masa_Berlaku_Menit": total_menit_simpan, 
+                                "Oleh_Admin": st.session_state.username
+                            }
+                            df_k = pd.concat([df_k, pd.DataFrame([new_rec])], ignore_index=True)
+                    
+                    # Simpan akumulasi data ke file CSV baru
+                    simpan_kegiatan(df_k)
+                    catat_log(st.session_state.username, "Upload Kegiatan", f"Mengupload catatan baru multipel: '{name}'")
+                    
+                    # Efek jeda opsional sepersekian detik agar pengguna merasakan loading selesai penuh
+                    time.sleep(1)
+                
+                # SISTEM PEMBERSIHAN FORMULIR TOTAL: Pemicu refresh paksa agar halaman bersih kembali semula
+                st.success("✅ Seluruh berkas sukses dipublikasikan!")
+                st.toast("🚀 Form dibersihkan otomatis!", icon="🧼")
+                st.rerun()
+            else:
+                st.error("❌ Publikasi Gagal! Nama kegiatan wajib diisi.")
+                st.toast("❌ Gagal publikasi konten!", icon="🛑")
 
     with tab_hapus:
         df_hapus = baca_kegiatan()
